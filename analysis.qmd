@@ -1,0 +1,611 @@
+---
+title: "Analysis File"
+format:
+  html: 
+    self-contained: true
+freeze: auto
+code-fold: true
+toc: true
+execute:
+  echo: true          
+  message: false       
+  warning: false
+---
+
+**Brain Volume Loss in Alzheimer’s Disease: The Roles of Age and Gender in the Relationship Between Atrophy and Cognitive Decline**
+
+This Quarto notebook is the computational companion to the manuscript.\
+Everything needed to reproduce my results (raw data, code, statistics, and figures) is executed here in a single linear workflow.
+
+**What you’ll find inside**
+
+| Section | What it does |
+|----------------------------|-------------------------------------------|
+| **1 Data loading & cleaning & Helper functions** | Reads the anonymised dataset from `/data`, converts raw variables into analysis-ready factors, and builds a summary dataframe for the descriptive table. Also includes re-usable utilities for p-value formatting, ANOVA-table generation, and interaction plotting live in the first code cell. |
+| **2 Analyses** | Runs assumption checks, baseline group comparisons, correlations, ANOVAs, and produces all APA-style tables and figures. |
+
+Happy replicating! 🙂
+
+# 1. Data Loading
+
+## 1.1 Helper Functions
+
+In the cell below I report which packages I am using, and which helper functions I have defined.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Load R packages and define helper utilities used 
+#           throughout the analysis.
+# -------------------------------------------------------------------------
+
+# Core data wrangling / plotting
+library(tidyverse) # ggplot2, dplyr, tidyr, etc.
+library(here)  # avoid fragile absolute paths
+library(broom)      # converts test objects to data frames
+library(tibble)
+library(janitor)
+library(patchwork)   # layout multiple ggplots
+
+# APA helpers (tables, theme_apa) 
+library(papaja) # apa_table(), theme_apa()
+
+# Lightweight stats helpers
+library(rstatix)   # p_format, p_round
+library(effsize)   # cohen.d()
+library(car)       # leveneTest()
+library(cocor)     # comparing correlations
+library(effectsize)   # eta_squared()
+
+# Reporting niceties
+library(glue) # inline string templating
+library(kableExtra) # nicely formatted tables (if not using papaja)
+
+# -------------------------------------------------------------------------
+# Helper operators / functions
+# -------------------------------------------------------------------------
+`%+%` <- function(a, b) paste0(a, b)  # quick string concat
+
+nbsp   <- "\u00A0"                    # non-breaking space for aligned APA tables
+indent <- function(level = 1) strrep(nbsp, 3 * level)
+
+# APA-style p-value formatter used repeatedly later
+apa_p <- function(p) {
+  p %>% 
+    p_round(digits = 3) %>% 
+    p_format(accuracy = .001,
+             leading.zero  = FALSE,
+             trailing.zero = FALSE,
+             add.p         = FALSE,
+             space         = TRUE)
+}
+# helper to build one APA table 
+make_anova_tbl <- function(model, caption) {
+  # -------- tidy F, df, p from papaja -----------------
+  tbl <- papaja::apa_print(model)$table |>
+    dplyr::rename(term = term)          # make sure column exists
+
+  # -------- partial η² + CI from effectsize ----------
+  eta <- effectsize::eta_squared(
+            model, partial = TRUE, ci = 0.95,
+            include_intercept = FALSE
+         ) |>
+    dplyr::rename(term   = Parameter,
+                  eta2   = Eta2_partial) |>
+    dplyr::mutate(term = janitor::make_clean_names(term))
+
+  # -------- harmonise term labels in tbl -------------
+  tbl <- tbl |>
+    dplyr::mutate(term = janitor::make_clean_names(term))
+
+  # -------- merge & prettify -------------------------
+  tbl <- dplyr::left_join(tbl, eta, by = "term") |>
+    dplyr::mutate(
+      `η²_p [95% CI]` =
+        dplyr::case_when(
+          !is.na(eta2) ~ glue::glue("{round(eta2, 2)} [{round(CI_low, 2)}, {round(CI_high, 2)}]"),
+          TRUE         ~ "—"
+        )
+    ) |>
+    dplyr::select(term, df, statistic, p.value, `η²_p [95% CI]`) |>
+    dplyr::mutate(
+      term = stringr::str_replace_all(term, "_", " ") |>   # prettier row labels
+             stringr::str_replace_all("x", "×")            # restore × symbol
+    )
+tbl$term <- stringr::str_replace_all(tbl$term, "times", "×")
+
+  papaja::apa_table(
+    tbl,
+    caption = caption,
+    escape  = FALSE
+  )
+}
+# Helper plotting function to plot interaction
+plot_interaction <- function(df, xvar, xlabel, title) {
+  ggplot(df,
+         aes(x = {{ xvar }}, y = M, fill = Dementia_groups)) +
+    geom_col(
+      position = position_dodge(.6), width = .55, colour = "black"
+    ) +
+    geom_errorbar(
+      aes(ymin = CI_low, ymax = CI_high),
+      width = .1, position = position_dodge(.6)
+    ) +
+    scale_fill_manual(values = c("white", "grey65")) +
+    labs(x = xlabel, y = "Mean nWBV", title = title, fill = "Group") +
+    scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    papaja::theme_apa(base_size = 11) +
+    theme(
+      panel.grid.major.x = element_blank()  
+    )
+}
+
+```
+
+## 1.2 Data Loading
+
+Here I load the raw CSV from the `data/` folder using **here** so the path works on every machine. No transformations yet.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Import the anonymised dataset.
+# -------------------------------------------------------------------------
+
+
+df <- read_csv(
+  here("data", "data.csv"),
+  show_col_types = FALSE               # suppress verbose readr message
+)
+```
+
+## 1.3 Recoding
+
+Here I am recoding the variable CDR that has three factors into CDR_binary that merges CDR Status 0.5 and 1 into a shared factor.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Recode factor variables and binary labels used throughout.
+#           This is the cleaned version used in all later analysis.
+# -------------------------------------------------------------------------
+
+df <- df %>%
+  mutate(
+    Gender     = factor(Gender, labels = c("Male", "Female")),
+    CDR_binary = if_else(CDR == 0, "CDR 0", "CDR 0.5 or 1")
+  )
+```
+
+## 1.4 Summary Dataframe for Descriptive Statistics Table
+
+Here I build a summary dataframe to later base my sample characteristics table on. This is done in a wide-format to make the APA formatting by papaja easier.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Build wide-format summary df for APA-style reporting
+#           of group characteristics by dementia status.
+# -------------------------------------------------------------------------
+
+summary_df <- df %>%
+  group_by(CDR_binary) %>%
+  summarise(
+    n        = n(),
+    Female   = sum(Gender == "Female"),
+    Male     = sum(Gender == "Male"),
+    Age      = sprintf("%.2f (%.2f)",  mean(Age,  na.rm = TRUE), sd(Age,  na.rm = TRUE)),
+    Education= sprintf("%.2f (%.2f)",  mean(EDUC, na.rm = TRUE), sd(EDUC, na.rm = TRUE)),
+    MMSE     = sprintf("%.2f (%.2f)",  mean(MMSE, na.rm = TRUE), sd(MMSE,   na.rm = TRUE)),
+    VeryMild = sum(CDR == 0.5),
+    Mild     = sum(CDR == 1),
+    .groups  = "drop"
+  ) %>%
+  mutate(
+    Female   = glue("{Female} ({round(Female / n * 100, 1)}%)"),
+    Male     = glue("{Male} ({round(Male   / n * 100, 1)}%)"),
+    VeryMild = glue("{VeryMild} ({round(VeryMild / n * 100, 1)}%)"),
+    Mild     = glue("{Mild} ({round(Mild   / n * 100, 1)}%)")
+  ) %>%
+  mutate(across(-CDR_binary, as.character))   # ←‑ make everything character first
+
+# ---- reshape wide <‑> long ---------------------------------------------------
+long <- summary_df %>%
+  pivot_longer(-CDR_binary, names_to = "Variable", values_to = "Value")
+
+wide <- long %>%
+  pivot_wider(names_from = CDR_binary, values_from = Value)
+
+```
+
+# 2. Analyses
+
+## 2.1 Descriptive Statistics Table (APA-formatted)
+
+Now I assemble the sample descriptive statistics table and format it to match the APA 7 guidelines. The formatting part almost made me cry, so I had to revert to chatGPT.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Build an APA-style table reporting the sample characteristics
+#           split by dementia groups.
+# -------------------------------------------------------------------------
+tbl <- bind_rows(
+  tibble(Variable = "Gender, *N* (*%*)",                 `CDR 0` = "", `CDR 0.5 or 1` = ""),
+  tibble(Variable = indent(1) %+% "Female",              wide %>% filter(Variable == "Female")    %>% select(-Variable)),
+  tibble(Variable = indent(1) %+% "Male",                wide %>% filter(Variable == "Male")      %>% select(-Variable)),
+  tibble(Variable = "Age (years), *M* (*SD*)",           wide %>% filter(Variable == "Age")       %>% select(-Variable)),
+  tibble(Variable = "Years of education, *M* (*SD*)",    wide %>% filter(Variable == "Education") %>% select(-Variable)),
+  tibble(Variable = "MMSE, *M* (*SD*)",                  wide %>% filter(Variable == "MMSE")      %>% select(-Variable)),
+  tibble(Variable = "CDR stage, *N* (*%*)",              `CDR 0` = "", `CDR 0.5 or 1` = ""),
+  tibble(Variable = indent(1) %+% "Very mild",           wide %>% filter(Variable == "VeryMild")  %>% select(-Variable)),
+  tibble(Variable = indent(1) %+% "Mild",                wide %>% filter(Variable == "Mild")      %>% select(-Variable))
+)
+
+tbl <- tbl %>% 
+  mutate(across(-Variable, ~ str_replace_all(.x, "%", "<em>%</em>"))) # italicise the % sign
+
+Ns <- df %>% count(CDR_binary) %>% deframe()                          #two-line column header
+colnames(tbl) <- c(
+  "",
+  glue("CDR 0<br><em>n</em> = {Ns['CDR 0']}"),
+  glue("CDR 0.5 or 1<br><em>n</em> = {Ns['CDR 0.5 or 1']}")
+)
+
+apa_table(
+  tbl,
+  align   = "l",
+  escape  = FALSE,
+  caption = "Descriptive statistics"
+)
+```
+
+## 2.2. Assumption Checks
+
+Before running inferential tests, I verify key assumptions (expected counts, homogeneity of variance, normality) and summarize them in a single table.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Conduct assumption checks and report them in a table
+# -------------------------------------------------------------------------
+
+
+## χ² expected counts
+contingency_table <- table(df$Gender, df$CDR_binary)
+chi_sq            <- chisq.test(contingency_table)
+exp_min           <- min(chi_sq$expected)     # smallest expected cell
+
+## Levene’s tests
+lev_age  <- leveneTest(Age  ~ CDR_binary, df)
+lev_edu  <- leveneTest(EDUC ~ CDR_binary, df)
+lev_mmse <- leveneTest(MMSE ~ CDR_binary, df)
+
+## Shapiro–Wilk tests
+shap_age  <- shapiro.test(df$Age)
+shap_edu  <- shapiro.test(df$EDUC)
+shap_mmse <- shapiro.test(df$MMSE)
+
+# Build Assumption Table 
+
+assumptions_tbl <- bind_rows(
+  tibble(
+    Variable  = "Gender χ²",
+    Check     = "Min expected",
+    Statistic = round(exp_min, 2),
+    df        = NA,
+    p         = NA_character_
+  ),
+  tibble(
+    Variable  = c("Age", "Education", "MMSE"),
+    Check     = "Levene F",
+    Statistic = round(c(
+      lev_age$`F value`[1],
+      lev_edu$`F value`[1],
+      lev_mmse$`F value`[1]), 2),
+    df        = c(
+      glue("{lev_age$Df[1]}, {lev_age$Df[2]}"),
+      glue("{lev_edu$Df[1]}, {lev_edu$Df[2]}"),
+      glue("{lev_mmse$Df[1]}, {lev_mmse$Df[2]}")),
+    p         = c(
+      apa_p(lev_age$`Pr(>F)`[1]),
+      apa_p(lev_edu$`Pr(>F)`[1]),
+      apa_p(lev_mmse$`Pr(>F)`[1]))
+  ),
+  tibble(
+    Variable  = c("Age", "Education", "MMSE"),
+    Check     = "Shapiro W",
+    Statistic = round(c(
+      shap_age$statistic,
+      shap_edu$statistic,
+      shap_mmse$statistic), 2),
+    df        = NA,
+    p         = c(
+      apa_p(shap_age$p.value),
+      apa_p(shap_edu$p.value),
+      apa_p(shap_mmse$p.value))
+  )
+)
+
+apa_table(
+  assumptions_tbl,
+  caption = "Assumption checks",
+  escape  = FALSE
+)
+```
+
+The distribution of MMSE scores showed a strong deviation from normality (*W* = `r round(shap_mmse$statistic, 2)`, *p* \< .001) and from equal-variances *F(*`r lev_mmse$Df`) =`r round(lev_mmse$F[1],2)`, *p* `r apa_p(lev_mmse$Pr[1])`. Therefore, the group comparison was conducted using Welch’s *t*-test, which does not assume equal variances or normality.
+
+## 2.3. Baseline Differences
+
+Here we compare the two groups on gender, age, education, and MMSE, reporting effect sizes alongside χ² and *t*/Welch tests.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Compute baseline differences and effect size, and report in 
+#           APA table.
+# -------------------------------------------------------------------------
+
+# χ² (already computed above as chi_sq)
+
+# t / Welch tests and effect sizes
+t_age   <- t.test(Age  ~ CDR_binary, df, var.equal = TRUE)
+d_age   <- cohen.d(df$Age,  df$CDR_binary)
+
+t_edu   <- t.test(EDUC ~ CDR_binary, df, var.equal = TRUE)
+d_edu   <- cohen.d(df$EDUC, df$CDR_binary)
+
+t_mmse  <- t.test(MMSE ~ CDR_binary, df, var.equal = FALSE)   # Welch
+d_mmse  <- cohen.d(df$MMSE, df$CDR_binary)
+
+# Build  table
+
+baseline_tbl <- bind_rows(
+  tidy(chi_sq) %>% 
+    transmute(Variable = "Gender", Test = "χ²",
+              `df` = parameter,
+              Statistic = round(statistic, 2),
+              `p` = apa_p(p.value),
+              `Cohen's d` = NA),
+  tidy(t_age) %>% 
+    transmute(Variable = "Age", Test = "t",
+              `df` = parameter,
+              Statistic = round(statistic, 2),
+              `p` = apa_p(p.value),
+              `Cohen's d` = apa_p(d_age$estimate)),
+  tidy(t_edu) %>% 
+    transmute(Variable = "Education", Test = "t",
+              `df` = parameter,
+              Statistic = round(statistic, 2),
+              `p` = apa_p(p.value),
+              `Cohen's d` = apa_p(d_edu$estimate)),
+  tidy(t_mmse) %>% 
+    transmute(Variable = "MMSE", Test = "Welch t",
+              `df` = parameter,
+              Statistic = round(statistic, 2),
+              `p` = apa_p(p.value),
+              `Cohen's d` = apa_p(d_mmse$estimate))
+)
+
+apa_table(
+  baseline_tbl,
+  caption = "Baseline comparisons between dementia and non-dementia groups",
+  escape  = FALSE
+)
+```
+
+## 2.4. Correlation
+
+Here I examine the nWBV–MMSE relationship overall and by group, then use a Fisher *r*-to-*z* test to see whether the subgroup correlations differ.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Compute correlations between nWBV and MMSE scores, and check 
+#           if they differ significantly by dementia status.
+# -------------------------------------------------------------------------
+
+# Compute Correlations 
+## Overall Correlation
+cor_all <- cor.test(df$nWBV, df$MMSE, method = "pearson")
+
+## Correlation by Groups
+r_nondementia <- cor.test( 
+  subset(df, Dementia_groups == 0)$nWBV,
+  subset(df, Dementia_groups == 0)$MMSE, 
+  method = "pearson" )
+
+r_dementia <- cor.test( 
+  subset(df, Dementia_groups == 1)$nWBV,
+  subset(df, Dementia_groups == 1)$MMSE, 
+  method = "pearson" )
+
+#Fisher r‑to‑z comparison
+
+fish <- cocor.indep.groups( 
+  r1 = r_dementia$estimate, 
+  r2 = r_nondementia$estimate, 
+  n1 = nrow(subset(df, Dementia_groups == 1)), 
+  n2 = nrow(subset(df, Dementia_groups == 0)), 
+  alternative = "two.sided", 
+  conf.level = 0.95 )
+
+# Build Correlation Table
+corr_tbl <- tibble(
+  Group      = c("Overall", "No dementia", "Dementia"),
+  Statistic  = c(
+    round(cor_all$estimate, 2),
+    round(r_nondementia$estimate, 2),
+    round(r_dementia$estimate, 2)
+  ),
+  p = c(
+    apa_p(cor_all$p.value),
+    apa_p(r_nondementia$p.value),
+    apa_p(r_dementia$p.value)
+  )
+)
+
+apa_table(
+  corr_tbl,
+  caption = "Correlations between nWBV and MMSE",
+  escape  = FALSE
+)
+```
+
+Additionally I checked whether the two correlations are significantly different from each other using a Fisher r-to-z comparison ($z=$ `r round(fish@fisher1925$statistic, 2)`, $p=$ `r apa_p(fish@fisher1925$p.value)`).
+
+## 2.5 Correlation Figure
+
+The scatter-plot below visualises the two correlation lines with distinct point markers for each dementia status.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Visualize the Correlations in an APA-style scatter plot. 
+# -------------------------------------------------------------------------
+
+
+# Label the grouping variable nicely
+df$Dementia_groups <- factor(
+  df$Dementia_groups,
+  levels = c(0, 1),
+  labels = c("No dementia", "Dementia")
+)
+
+# Building the Scatter Plot
+
+ggplot(df, aes(nWBV, MMSE)) +
+  geom_point(                                  
+    aes(shape = Dementia_groups),
+    colour = "black", size = 2, alpha = .70
+  ) +
+  geom_smooth(                                
+    aes(linetype = Dementia_groups),
+    method   = "lm",
+    se       = FALSE,
+    colour   = "black",
+    linewidth = .8
+  ) +
+  scale_shape_manual(values = c(16, 1)) +         # filled vs open circles
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(
+    x        = "Normalized Whole Brain Volume (nWBV)",
+    y        = "Mini‑Mental State Examination (MMSE)",
+    shape    = "Group",
+    linetype = "Group"
+  ) +
+theme_apa(base_size = 11) +              # APA 7 look‑and‑feel
+  theme(legend.position = "right",
+        aspect.ratio   = 3/4)  
+```
+
+## 2.6. Inferential Statistics
+
+### 2.6.1. Fit Models
+
+Next we fit two separate 2 × 2 between-subjects ANOVAs: Dementia × Age and Dementia × Gender.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Fit 2×2 ANOVAs (Dementia × Age  and  Dementia × Gender)
+# -------------------------------------------------------------------------
+model_DxA <- aov(nWBV ~ Dementia_groups * Age_groups,    data = df)
+model_DxG <- aov(nWBV ~ Dementia_groups * Gender,        data = df)
+```
+
+### 2.6.2. Build ANOVA tables
+
+The helper function `make_anova_tbl()` converts each model into an APA-style table with partial η² and CIs.
+
+```{r}
+make_anova_tbl(model_DxA,
+  "ANOVA: Dementia status × Age group on nWBV")
+
+make_anova_tbl(model_DxG,
+  "ANOVA: Dementia status × Gender on nWBV")
+```
+
+### 2.6.3. Cell means, marginal means, SDs
+
+This chunk calculates group means, SDs, and 95 % CIs that feed both the write-up and the interaction plots.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Means & SDs per cell and marginal means for plotting 
+#           and in-line write-up
+# -------------------------------------------------------------------------
+
+cell_stats <- df %>% 
+  mutate(
+    Age_groups      = factor(Age_groups, levels = c(0, 1), labels = c("60–70", "70+")),
+    Dementia_groups = factor(Dementia_groups, levels = c("No dementia", "Dementia"))
+  ) %>% 
+  group_by(Dementia_groups, Age_groups) %>% 
+  summarise(
+    n   = n(),
+    M   = round(mean(nWBV, na.rm = TRUE),3),
+    SD  = round(sd(nWBV,   na.rm = TRUE),3),
+    se  = round(SD / sqrt(n),3),
+    t95 = round(qt(.975, df = n - 1),3),
+    CI_low  = round(M - t95 * se,3),
+    CI_high = round(M + t95 * se,3),
+    .groups = "drop"
+  )
+
+marg_by_dementia <- cell_stats %>% 
+  group_by(Dementia_groups) %>% 
+  summarise(
+    M  = mean(M),
+    SD = sqrt(mean(SD^2)),
+    .groups = "drop"
+  )
+
+marg_by_age <- cell_stats %>% 
+  group_by(Age_groups) %>% 
+  summarise(
+    M  = mean(M),
+    SD = sqrt(mean(SD^2)),
+    .groups = "drop"
+  )
+
+# Assemble quick table for inspection
+knitr::kable(cell_stats, caption = "Cell means and SDs for nWBV")
+```
+
+### 2.6.4. Interaction Plot
+
+Finally, we visualise the Dementia × Age and Dementia × Gender interactions side-by-side with bars and 95 % CI error bars.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Two side-by-side barplots of mean nWBV with 95 % CIs:
+#           (A) Dementia × Age-group   (B) Dementia × Gender
+#           → Uses cell means/SDs computed earlier in `cell_stats`
+# -------------------------------------------------------------------------
+
+# Prepare a summary for the Gender panel 
+gender_ci <- df %>% 
+  mutate(
+    Dementia_groups = factor(Dementia_groups,
+                             levels = c("No dementia", "Dementia")),
+    Gender = factor(Gender, levels = c("Male", "Female"))
+  ) %>% 
+  group_by(Dementia_groups, Gender) %>%        
+  summarise(
+    n       = n(),
+    M       = mean(nWBV, na.rm = TRUE),
+    SD      = sd(nWBV,   na.rm = TRUE),
+    se      = SD / sqrt(n),                     
+    t95     = qt(.975, df = n - 1),             
+    CI_low  = M - t95 * se,
+    CI_high = M + t95 * se,
+    .groups = "drop"
+  )
+
+# Prepare a summary for the Age panel
+age_ci <- cell_stats   
+
+
+# Build each panel individually 
+# -------------------------------------------------------------------------
+p_age    <- plot_interaction(age_ci,    Age_groups, "Age group (years)", "(A) Age × Dementia")
+p_gender <- plot_interaction(gender_ci, Gender,     "Gender",            "(B) Gender × Dementia")
+
+
+#Arrange side-by-side with a shared legend at the bottom
+(p_age | p_gender) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
