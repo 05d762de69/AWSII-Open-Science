@@ -1,11 +1,12 @@
 # Brain Volume Loss in Alzheimer’s Disease: The Roles of Age and Gender in the Relationship Between Atrophy and Cognitive Decline
+*Open-science companion repository*
 
-## Introduction
+This repo accompanies the final assignment for **Academic Writing Skills II**.  
+It contains:
 
-This repository holds my Open Science approach to the final assignment of the course Academic Writing Skills II. The goal of the assignment was to conduct
-analyses on a given dataset and write up the _Introduction_, _Results_, and _Discussion_ in the form of a partial replication.
-
-I wanted to use this assignment to familiarize myself with the Quarto extension for R, and test out some workflows in Academic Writing.
+* the full Quarto analysis notebook (code + results)  
+* the manuscript source that pulls results inline  
+* raw/processed data and a reproducible R environment via **renv**
 
 >[!IMPORTANT]
 >Please view the analysis companion [here](https://05d762de69.github.io/AWSII-Open-Science/analysis.html).
