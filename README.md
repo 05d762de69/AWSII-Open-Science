@@ -7,7 +7,8 @@ analyses on a given dataset and write up the _Introduction_, _Results_, and _Dis
 
 I wanted to use this assignment to familiarize myself with the Quarto extension for R, and test out some workflows in Academic Writing.
 
-Please view the analysis companion [here](https://05d762de69.github.io/AWSII-Open-Science/analysis.html).
+[!important]
+>Please view the analysis companion [here](https://05d762de69.github.io/AWSII-Open-Science/analysis.html).
 
 ## Project structure
 
