@@ -1,0 +1,558 @@
+---
+title: "Brain Volume Loss in Alzheimer’s Disease: The Roles of Age and Gender in the Relationship Between Atrophy and Cognitive Decline"
+shorttitle: "Brain Atrophy and Cognitive Decline in AD"
+course: Academic Writing Skills II (2.4P)
+professor: Radhika Joshi
+duedate: 04.06.2025
+author:
+  - name: Hannes Schätzle
+    corresponding: true
+    email: 679693hs@eur.nl
+    affiliations:
+      - id: id1
+        name: "Erasmus University Rotterdam"
+        department: Department of Psychology
+        address: Burgemeester Oudlaan 50 
+        city: Rotterdam
+        country: Netherlands
+        postal-code: 3062 PA
+abstract: "Here I would put a nice abstract, if I had a life next to Brain and Perception."
+keywords: [Alzheimer's disease, normalized Whole-Brain Volume, Cognitive Functioning, MMSE, Gender, Age]
+floatsintext: true
+numbered-lines: false
+bibliography: bibliography.bib
+suppress-title-page: false
+link-citations: true
+draft-date: false
+lang: en
+language:
+  citation-last-author-separator: "and"
+  email: "E-Mail"
+  title-block-author-note: "Author Note"
+  title-block-correspondence-note: "Correspondence concerning this article should be addressed to "
+format:
+  apaquarto-docx:
+    toc: false
+  apaquarto-html: 
+    toc: true
+  apaquarto-typst: 
+    keep-typ: true
+    list-of-figures: false
+    list-of-tables: false
+    toc: false
+    papersize: "us-letter"
+  apaquarto-pdf:
+    documentmode: stu
+    keep-tex: true
+execute:
+  echo: false          
+  message: false       
+  warning: false  
+---
+
+The fastest growing demographic group in high-income countries is the old group. This group is at highest risk of developing a cognitive disorder, particularly dementia. The prevalence of dementia is expected to double from 50 million people in 2010 to 113 million by 2050. Out of all dementia cases, 60-90% are due to *Alzheimer's Disease (AD)*. Thereby, this disease is an increasingly significant clinical and socioeconomic burden for society [@knopman2021; @tahami2022].
+
+AD is a neurodegenerative disorder that is characterized by $\beta$-amyloid-containing extracellular plaques and tau-containing intracellular neurofibrillary tangles [@knopman2021]. One hallmark symptom of AD is cognitive impairment. The earliest symptomatic stage of cognitive impairment due to AD is *Mild Cognitive Impairment (MCI)*. MCI is marked by deficits in one or more cognitive domains (i.e. short-term memory, expressive speech, visuospatial processing, executive function), but functional independence is still preserved. A later stage is *dementia*, which is marked by a significant decrease in functional independence and a stronger impact on daily life [@knopman2021]. There are several risk factors for progressing from MCI to dementia, such as poor performance on neurocognitive tests such as the Mini-Mental State Examination (MMSE), which is commonly used as an early screening tool for AD dementia. [@tahami2022].
+
+Due to the nature of AD, brain atrophy is another early marker of AD dementia. @dinomais2016 evaluate how scores on the MMSE relate to regional brain atrophy, and report strong relationship with structures in the limbic system. This is in line with other findings that relate cognitive impairment due to AD with atrophy in the hippocampal, medial temporal, or entorhinal regions [@tahami2022], and greater degree of total brain atrophy [@chen2017]. The relationship between total brain atrophy and dementia due to AD is still under discussion [@orellana2016], as some studies argue that total brain atrophy, as measured by normalized Whole-Brain Volume (*nWBV*), is not sensitive enough as a diagnostic tool [cf. @knopman2021].
+
+This relationship between AD dementia status and brain atrophy further seems to be moderated by gender. While some studies report a higher odds ratio for males developing MCI, the majority of studies report a higher prevalence of dementia due to AD in females. This might be linked to steeper slope of brain volume loss in females [@mouton1998; @knopman2021].
+
+Another factor between impacting this relationship is age. Changes in brain volume deviate from changes that occur in normal aging [@tahami2022]. @mouton1998 found that in normal aging the total cortical volume is relatively stable, whereas in AD brain atrophy ranges 20-25% decline in volume. They also conclude a strong relationship between the severity of cognitive impairment and brain atrophy in AD but not in normal aging.
+
+Although the rate of progression of AD dementia is highly variable, an important factor is the identification early in the disease process [@tahami2022]. Given the urgency of an early identification, developing an understanding of risk profiles and diagnostic markers is of utmost importance to the scientific and clinical community.
+
+The present study aims to add clarifying evidence to the debate on how nWBV relates to cognitive functioning (measured by MMSE) and whether this relationship differs between healthy individuals and individuals diagnosed with AD dementia. The second goal is to understand what effect age and gender have on the relationship between nWBV and dementia status. The goals above are reached through partial-replication, and conceptual extension of a study by @buckner2010. First, it is hypothesized that nWBV is positively associated with MMSE scores. This relationship is expected to be stronger in the dementia group compared to the non-dementia group. Second, nWBV is expected to be significantly greater in the non-dementia group than in the dementia group. This group difference is anticipated to be more pronounced in the older group (aged 70 years and above), compared to the younger-old group (aged 60 to 70 years). In addition, it is hypothesized that the difference in nWBV the dementia group and the non-dementia group is greater in females than in males.
+
+# Method
+
+## Open Science Practices
+
+All materials related to this study are openly available in a public GitHub repository to support transparency and reproducibility. This includes a Quarto Document containing the full analysis, and an interactive HTML file with embedded code and results, and the anonymized dataset used. Access these materials at: <https://github.com/05d762de69/AWSII-Open-Science>
+
+# Results
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Load R packages and define helper utilities used 
+#           throughout the analysis.
+# -------------------------------------------------------------------------
+
+# Core data wrangling / plotting
+library(tidyverse) # ggplot2, dplyr, tidyr, etc.
+library(here)  # avoid fragile absolute paths
+library(broom)      # converts test objects to data frames
+library(tibble)
+library(janitor)
+library(patchwork)   # layout multiple ggplots
+
+# APA helpers (tables, theme_apa) 
+library(papaja) # apa_table(), theme_apa()
+
+# Lightweight stats helpers
+library(rstatix)   # p_format, p_round
+library(effsize)   # cohen.d()
+library(car)       # leveneTest()
+library(cocor)     # comparing correlations
+library(effectsize)   # eta_squared()
+
+# Reporting niceties
+library(glue) # inline string templating
+library(kableExtra) # nicely formatted tables (if not using papaja)
+
+# -------------------------------------------------------------------------
+# Helper operators / functions
+# -------------------------------------------------------------------------
+`%+%` <- function(a, b) paste0(a, b)  # quick string concat
+
+nbsp   <- "\u00A0"                    # non-breaking space for aligned APA tables
+indent <- function(level = 1) strrep(nbsp, 3 * level)
+
+# APA-style p-value formatter used repeatedly later
+apa_p <- function(p) {
+  p %>% 
+    p_round(digits = 3) %>% 
+    p_format(accuracy = .001,
+             leading.zero  = FALSE,
+             trailing.zero = FALSE,
+             add.p         = FALSE,
+             space         = TRUE)
+}
+# helper to build one APA table 
+make_anova_tbl <- function(model, caption) {
+  # -------- tidy F, df, p from papaja -----------------
+  tbl <- papaja::apa_print(model)$table |>
+    dplyr::rename(term = term)          # make sure column exists
+
+  # -------- partial η² + CI from effectsize ----------
+  eta <- effectsize::eta_squared(
+            model, partial = TRUE, ci = 0.95,
+            include_intercept = FALSE
+         ) |>
+    dplyr::rename(term   = Parameter,
+                  eta2   = Eta2_partial) |>
+    dplyr::mutate(term = janitor::make_clean_names(term))
+
+  # -------- harmonise term labels in tbl -------------
+  tbl <- tbl |>
+    dplyr::mutate(term = janitor::make_clean_names(term))
+
+  # -------- merge & prettify -------------------------
+  tbl <- dplyr::left_join(tbl, eta, by = "term") |>
+    dplyr::mutate(
+      `η²_p [95% CI]` =
+        dplyr::case_when(
+          !is.na(eta2) ~ glue::glue("{round(eta2, 2)} [{round(CI_low, 2)}, {round(CI_high, 2)}]"),
+          TRUE         ~ "—"
+        )
+    ) |>
+    dplyr::select(term, df, statistic, p.value, `η²_p [95% CI]`) |>
+    dplyr::mutate(
+      term = stringr::str_replace_all(term, "_", " ") |>   # prettier row labels
+             stringr::str_replace_all("x", "×")            # restore × symbol
+    )
+tbl$term <- stringr::str_replace_all(tbl$term, "times", "×")
+
+  papaja::apa_table(
+    tbl,
+    caption = caption,
+    escape  = FALSE
+  )
+}
+# Helper plotting function to plot interaction
+plot_interaction <- function(df, xvar, xlabel, title) {
+  ggplot(df,
+         aes(x = {{ xvar }}, y = M, fill = Dementia_groups)) +
+    geom_col(
+      position = position_dodge(.6), width = .55, colour = "black"
+    ) +
+    geom_errorbar(
+      aes(ymin = CI_low, ymax = CI_high),
+      width = .1, position = position_dodge(.6)
+    ) +
+    scale_fill_manual(values = c("white", "grey65")) +
+    labs(x = xlabel, y = "Mean nWBV", title = title, fill = "Group") +
+    scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    papaja::theme_apa(base_size = 11) +
+    theme(
+      panel.grid.major.x = element_blank()  
+    )
+}
+
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Import the anonymised dataset.
+# -------------------------------------------------------------------------
+
+
+df <- read_csv(
+  here("data", "data.csv"),
+  show_col_types = FALSE               # suppress verbose readr message
+)
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Recode factor variables and binary labels used throughout.
+#           This is the cleaned version used in all later analysis.
+# -------------------------------------------------------------------------
+
+df <- df %>%
+  mutate(
+    Gender     = factor(Gender, labels = c("Male", "Female")),
+    CDR_binary = if_else(CDR == 0, "CDR 0", "CDR 0.5 or 1")
+  )
+
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Build wide-format summary df for APA-style reporting
+#           of group characteristics by dementia status.
+# -------------------------------------------------------------------------
+
+summary_df <- df %>%
+  group_by(CDR_binary) %>%
+  summarise(
+    n        = n(),
+    Female   = sum(Gender == "Female"),
+    Male     = sum(Gender == "Male"),
+    Age      = sprintf("%.2f (%.2f)",  mean(Age,  na.rm = TRUE), sd(Age,  na.rm = TRUE)),
+    Education= sprintf("%.2f (%.2f)",  mean(EDUC, na.rm = TRUE), sd(EDUC, na.rm = TRUE)),
+    MMSE     = sprintf("%.2f (%.2f)",  mean(MMSE, na.rm = TRUE), sd(MMSE,   na.rm = TRUE)),
+    VeryMild = sum(CDR == 0.5),
+    Mild     = sum(CDR == 1),
+    .groups  = "drop"
+  ) %>%
+  mutate(
+    Female   = glue("{Female} ({round(Female / n * 100, 1)}%)"),
+    Male     = glue("{Male} ({round(Male   / n * 100, 1)}%)"),
+    VeryMild = glue("{VeryMild} ({round(VeryMild / n * 100, 1)}%)"),
+    Mild     = glue("{Mild} ({round(Mild   / n * 100, 1)}%)")
+  ) %>%
+  mutate(across(-CDR_binary, as.character))   # ←‑ make everything character first
+
+# ---- reshape wide <‑> long ---------------------------------------------------
+long <- summary_df %>%
+  pivot_longer(-CDR_binary, names_to = "Variable", values_to = "Value")
+
+wide <- long %>%
+  pivot_wider(names_from = CDR_binary, values_from = Value)
+```
+
+## Descriptive Statistics
+
+```{r}
+
+stub_align <- "p{8.5cm}"   # wraps nicely in PDF
+
+align_vec <- c(
+  "p{2in}",                                 # stub column
+  ">{\\centering\\arraybackslash}p{1.75in}",# numeric col 1
+  ">{\\centering\\arraybackslash}p{1.75in}" # numeric col 2
+)
+
+# ── build the display table ──────────────────────────────────────────────────
+tbl <- bind_rows(
+  tibble(Variable = "Gender, \\emph{N} (\\emph{\\%})",          `CDR 0` = "", `CDR 0.5 or 1` = ""),
+  tibble(Variable = indent(1) %>% paste0("Female"),             wide %>% filter(Variable == "Female")    %>% select(-Variable)),
+  tibble(Variable = indent(1) %>% paste0("Male"),               wide %>% filter(Variable == "Male")      %>% select(-Variable)),
+  tibble(Variable = "Age (in years), \\emph{M} (\\emph{SD})",   wide %>% filter(Variable == "Age")       %>% select(-Variable)),
+  tibble(Variable = "Years of education, \\emph{M} (\\emph{SD})",
+                                                                wide %>% filter(Variable == "Education") %>% select(-Variable)),
+  tibble(Variable = "MMSE, \\emph{M} (\\emph{SD})",             wide %>% filter(Variable == "MMSE")      %>% select(-Variable)),
+  tibble(Variable = "CDR, symptomatic stage, \\emph{N} (\\emph{\\%})",
+                                                                `CDR 0` = "", `CDR 0.5 or 1` = ""),
+  tibble(Variable = indent(1) %>% paste0("Very mild"),          wide %>% filter(Variable == "VeryMild")  %>% select(-Variable)),
+  tibble(Variable = indent(1) %>% paste0("Mild"),               wide %>% filter(Variable == "Mild")      %>% select(-Variable))
+)
+
+# ── italicise the % sign inside every data cell ──────────────────────────────
+tbl <- tbl %>%
+  mutate(across(-Variable, ~ stringr::str_replace_all(.x, "%", "\\\\emph{\\\\%}")))
+
+# ── two-line column headers inside a single shortstack -----------------------
+Ns <- df %>% count(CDR_binary) %>% deframe()
+colnames(tbl) <- c(
+  "",
+  glue("\\shortstack{{CDR 0\\\\\\emph{{n}} = {Ns['CDR 0']}}}"),
+  glue("\\shortstack{{CDR 0.5 or 1\\\\\\emph{{n}} = {Ns['CDR 0.5 or 1']}}}")
+)
+
+# ── output APA-style table ───────────────────────────────────────────────────
+apa_table(tbl,
+          align   = align_vec,
+          escape  = FALSE,
+          caption = "Descriptive statistics",
+          placement = "b")
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Conduct assumption checks and report them in a table
+# -------------------------------------------------------------------------
+
+
+## χ² expected counts
+contingency_table <- table(df$Gender, df$CDR_binary)
+chi_sq            <- chisq.test(contingency_table)
+exp_min           <- min(chi_sq$expected)     # smallest expected cell
+
+## Levene’s tests
+lev_age  <- leveneTest(Age  ~ CDR_binary, df)
+lev_edu  <- leveneTest(EDUC ~ CDR_binary, df)
+lev_mmse <- leveneTest(MMSE ~ CDR_binary, df)
+
+## Shapiro–Wilk tests
+shap_age  <- shapiro.test(df$Age)
+shap_edu  <- shapiro.test(df$EDUC)
+shap_mmse <- shapiro.test(df$MMSE)
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Compute baseline differences and effect size, and report in 
+#           APA table.
+# -------------------------------------------------------------------------
+
+# χ² (already computed above as chi_sq)
+
+# t / Welch tests and effect sizes
+t_age   <- t.test(Age  ~ CDR_binary, df, var.equal = TRUE)
+d_age   <- cohen.d(df$Age,  df$CDR_binary)
+
+t_educ   <- t.test(EDUC ~ CDR_binary, df, var.equal = TRUE)
+d_educ   <- cohen.d(df$EDUC, df$CDR_binary)
+
+t_mmse  <- t.test(MMSE ~ CDR_binary, df, var.equal = FALSE)   # Welch
+d_mmse  <- cohen.d(df$MMSE, df$CDR_binary)
+```
+
+The sample characteristics are summarized in Table 1. Preliminary analysis showed that gender was unevenly distributed across groups, $\chi^2$(`r chi_sq$parameter`, $N=$  `r sum(contingency_table)`)  $=$ `r round(chi_sq$statistic,2)`), $p=$ `r apa_p(chi_sq$p.value)`, with the non-dementia group (CDR 0) containing a significantly higher proportion of females than the dementia group (CDR 0.5 or 1). Further analysis shows that age did not differ significantly between the groups, $t$(`r t_age$parameter`) $=$ `r round(t_age$statistic, 2)`, $p=$ `r apa_p(t_age$p.value)`. The effect size, as measured by Cohen’s d, was $d=$ `r apa_p(d_age$estimate)`. Years of education were significantly higher in the non-dementia group compared to the dementia group , $t$(`r t_educ$parameter`) $=$ `r round(t_educ$statistic, 2)`, $p$ `r apa_p(t_educ$p.value)`. The effect size was $d=$ `r apa_p(d_educ$estimate)`, indicating a medium effect. For MMSE scores, Levene’s test for equality of variances was significant *F(*`r lev_mmse$Df`) $=$ `r round(lev_mmse$F[1],2)`, $p$ `r apa_p(lev_mmse$Pr[1])`[^1]. MMSE scores were significantly lower in the dementia group than in the non-dementia group, $t$(`r round(t_mmse$parameter, 2)`) $=$ `r round(t_mmse$statistic, 2)`, $p$ `r apa_p(t_educ$p.value)`, showing a large effect ($d=$ `r apa_p(d_mmse$estimate)`).
+
+[^1]: The assumption of homogeneity of variances was violated, so Welch's t-test was used instead of the standard independent t-test.
+
+## Relationship between Normalized Whole-Brain Volume and MMSE Scores
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Compute correlations between nWBV and MMSE scores, and check 
+#           if they differ significantly by dementia status.
+# -------------------------------------------------------------------------
+
+# Compute Correlations 
+## Overall Correlation
+cor_all <- cor.test(df$nWBV, df$MMSE, method = "pearson")
+
+## Correlation by Groups
+r_nondementia <- cor.test( 
+  subset(df, Dementia_groups == 0)$nWBV,
+  subset(df, Dementia_groups == 0)$MMSE, 
+  method = "pearson" )
+
+r_dementia <- cor.test( 
+  subset(df, Dementia_groups == 1)$nWBV,
+  subset(df, Dementia_groups == 1)$MMSE, 
+  method = "pearson" )
+
+#Fisher r‑to‑z comparison
+
+fish <- cocor.indep.groups( 
+  r1 = r_dementia$estimate, 
+  r2 = r_nondementia$estimate, 
+  n1 = nrow(subset(df, Dementia_groups == 1)), 
+  n2 = nrow(subset(df, Dementia_groups == 0)), 
+  alternative = "two.sided", 
+  conf.level = 0.95 )
+```
+
+The first set of questions aimed to clarify the relationship between nWBV and MMSE scores. It was hypothesized that nWBV and MMSE scores would positively correlate, and that this relationship would be stronger in the dementia group, compared to the non-dementia group. The correlation between nWBV and MMSE scores was tested using *Pearson's r*, and a moderate positive correlation was found ($r$(`r cor_all$parameter`) $=$ `r round(cor_all$estimate,2)`, $p=$ `r apa_p(cor_all$p.value)`). Furthermore, as shown in @fig-correlation, the correlation between nWBV and MMSE scores in the dementia group ($r$(`r r_dementia$parameter`) $=$ `r round(r_dementia$estimate,2)`, $p=$ `r apa_p(r_dementia$p.value)`) is significantly larger than the correlation in the non-dementia group ($r=$ (`r r_nondementia$parameter`) $=$ `r round(r_nondementia$estimate,2)`, $p=$`r apa_p(r_nondementia$p.value)`), $z=$ `r round(fish@fisher1925$statistic,2)`, $p=$ `r apa_p(fish@fisher1925$p.value)`.
+
+```{r}
+#| label: fig-correlation
+#| fig-cap: |
+#|   Corrleation between MMSE and nWBV by dementia status 
+#| fig-keep-inline: true        # keep it inline in Word
+#| fig-align: center
+#| fig-width: 5.5                 # optional size control
+#| fig-height: 4
+#| echo: false
+#| fig-pos: "ht"
+
+
+# Label the grouping variable nicely
+df$Dementia_groups <- factor(
+  df$Dementia_groups,
+  levels = c(0, 1),
+  labels = c("No dementia", "Dementia")
+)
+
+ggplot(df, aes(nWBV, MMSE)) +
+  geom_point(                                     # scatter
+    aes(shape = Dementia_groups),
+    colour = "black", size = 2, alpha = .70
+  ) +
+  geom_smooth(                                    # OLS per group
+    aes(linetype = Dementia_groups),
+    method   = "lm",
+    se       = FALSE,
+    colour   = "black",
+    linewidth = .8
+  ) +
+  scale_shape_manual(values = c(16, 1)) +         # filled vs open circles
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(
+    x        = "Normalized Whole Brain Volume (nWBV)",
+    y        = "Mini‑Mental State Examination (MMSE)",
+    shape    = "Group",
+    linetype = "Group"
+  ) +
+  papaja::theme_apa(base_size = 11) +              # APA 7 look‑and‑feel
+  theme(legend.position = "right",
+        aspect.ratio   = 3/4)                      # keeps text legible
+```
+
+## Group Differences in Normalized Whole-Brain Volume
+
+Following, several group differences were analyzed. nWBV was expected to be significantly greater in the non-dementia group than in the dementia group. This group difference is anticipated to be more pronounced in older adults (aged 70 years and above), compared to younger-old adults (aged 60 to 70 years). In addition, it is hypothesized that the difference in nWBV between the dementia and the non-dementia group is greater in females than in males.
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Fit 2×2 ANOVAs (Dementia × Age  and  Dementia × Gender)
+# -------------------------------------------------------------------------
+model_DxA <- aov(nWBV ~ Dementia_groups * Age_groups,    data = df)
+model_DxG <- aov(nWBV ~ Dementia_groups * Gender,        data = df)
+```
+
+```{r}
+# -------------------------------------------------------------------------
+#  PURPOSE: Means & SDs per cell and marginal means for plotting 
+#           and in-line write-up
+# -------------------------------------------------------------------------
+
+cell_stats <- df %>% 
+  mutate(
+    Age_groups      = factor(Age_groups, levels = c(0, 1), labels = c("60–70", "70+")),
+    Dementia_groups = factor(Dementia_groups, levels = c("No dementia", "Dementia"))
+  ) %>% 
+  group_by(Dementia_groups, Age_groups) %>% 
+  summarise(
+    n   = n(),
+    M   = round(mean(nWBV, na.rm = TRUE),3),
+    SD  = round(sd(nWBV,   na.rm = TRUE),3),
+    se  = round(SD / sqrt(n),3),
+    t95 = round(qt(.975, df = n - 1),3),
+    CI_low  = round(M - t95 * se,3),
+    CI_high = round(M + t95 * se,3),
+    .groups = "drop"
+  )
+
+marg_by_dementia <- cell_stats %>% 
+  group_by(Dementia_groups) %>% 
+  summarise(
+    M  = round(mean(M),3),
+    SD = round(sqrt(mean(SD^2)),3),
+    .groups = "drop"
+  )
+
+marg_by_age <- cell_stats %>% 
+  group_by(Age_groups) %>% 
+  summarise(
+    M  = round(mean(M),3),
+    SD = round(sqrt(mean(SD^2)),3),
+    .groups = "drop"
+  )
+```
+
+In order to test these hypotheses, a two-way between-subjects Analysis of Variance (ANOVA) was conducted. @fig-nwbv-dual displays the mean nWBV, broken down by dementia status.
+
+```{r echo=FALSE}
+#| label: fig-nwbv-dual
+#| fig-cap: |
+#|   Mean normalised whole-brain volume (*nWBV*) by dementia status,  
+#|   split by (A) age group and (B) gender. Error bars indicating the 95% CI.
+#| fig-keep-inline: true
+#| fig-align: center
+#| fig-width: 7.5        # wider to accommodate two panels
+#| fig-height: 4
+#| echo: false
+#| fig-pos: "hbt"
+
+# -------------------------------------------------------------------------
+#  PURPOSE: Two side-by-side barplots of mean nWBV with 95 % CIs:
+#           (A) Dementia × Age-group   (B) Dementia × Gender
+#           → Uses cell means/SDs computed earlier in `cell_stats`
+# -------------------------------------------------------------------------
+
+# Prepare a summary for the Gender panel 
+gender_ci <- df %>% 
+  mutate(
+    Dementia_groups = factor(Dementia_groups,
+                             levels = c("No dementia", "Dementia")),
+    Gender = factor(Gender, levels = c("Male", "Female"))
+  ) %>% 
+  group_by(Dementia_groups, Gender) %>%        
+  summarise(
+    n       = n(),
+    M       = mean(nWBV, na.rm = TRUE),
+    SD      = sd(nWBV,   na.rm = TRUE),
+    se      = SD / sqrt(n),                     
+    t95     = qt(.975, df = n - 1),             
+    CI_low  = M - t95 * se,
+    CI_high = M + t95 * se,
+    .groups = "drop"
+  )
+
+# Prepare a summary for the Age panel
+age_ci <- cell_stats   
+
+
+# Build each panel individually 
+# -------------------------------------------------------------------------
+p_age    <- plot_interaction(age_ci,    Age_groups, "Age group (years)", "(A) Age × Dementia")
+p_gender <- plot_interaction(gender_ci, Gender,     "Gender",            "(B) Gender × Dementia")
+
+
+#Arrange side-by-side with a shared legend at the bottom
+(p_age | p_gender) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+```
+
+A statistically significant main effect of dementia status on nWBV was found (`r apa_print(model_DxA)$statistic$Dementia_groups`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxA, partial = TRUE) %>% filter(Parameter == "Dementia_groups") %>% pull(Eta2_partial), 2)`). On average, the dementia group ($M=$ `r marg_by_dementia$M[marg_by_dementia$Dementia_groups == "Dementia"]`, $SD=$ `r marg_by_dementia$SD[marg_by_dementia$Dementia_groups == "Dementia"]`) showed a smaller nWBV than the non-dementia group ($M=$ `r marg_by_dementia$M[marg_by_dementia$Dementia_groups == "No dementia"]`, $SD=$ `r marg_by_dementia$SD[marg_by_dementia$Dementia_groups == "No dementia"]`). Additionally, a statistically significant main effect of age group (`r apa_print(model_DxA)$statistic$Age_groups`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxA, partial = TRUE) %>%filter(Parameter == "Age_groups") %>%pull(Eta2_partial), 2)`) was found. The interaction effect between dementia status and age group was also statistically significant (`r apa_print(model_DxA)$statistic$'Dementia_groups_Age_groups'`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxA, partial = TRUE) %>% filter(Parameter == "Dementia_groups:Age_groups") %>% pull(Eta2_partial), 2)`). Interestingly, as illustrated in panel A of @fig-nwbv-dual, the dementia-related reduction in nWBV was larger in the younger-old group ($\Delta=$ `r round(cell_stats$M[1] - cell_stats$M[3], 3)`) than in the older group ($\Delta=$ `r round(cell_stats$M[2] - cell_stats$M[4], 3)`).
+
+A similar analysis was conducted with dementia status and gender as factors to examine whether the effect of dementia status on nWBV differed by gender. This ANOVA revealed a statistically significant main effect of dementia status ( `r apa_print(model_DxG)$statistic$Dementia_groups`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxG, partial = TRUE) %>% filter(Parameter == "Dementia_groups") %>% pull(Eta2_partial), 2)`), and a statistically significant main effect of gender (`r apa_print(model_DxG)$statistic$Gender`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxG, partial = TRUE) %>%filter(Parameter == "Gender") %>%pull(Eta2_partial), 2)`). However, the interaction effect between dementia status and gender was not statistically significant (`r apa_print(model_DxG)$statistic$'Dementia_groups_Gender'`, $\eta p^2=$ `r round(effectsize::eta_squared(model_DxG, partial = TRUE) %>%filter(Parameter == "Dementia_groups:Gender") %>%pull(Eta2_partial), 2)`, see panel B of @fig-nwbv-dual).
+
+# Discussion
+
+This study investigated the relationship between nWBV and cognitive functioning, and whether this relationship differs between groups defined by AD dementia status. A positive association was found between nWBV and MMSE scores, and it was significantly stronger in the dementia group than in the non-dementia group. The second set of questions set out to determine the impact of age and gender on the relationship between dementia status and nWBV. While age showed a significant interaction effect, gender did not.
+
+The moderately positive correlation between nWBV and MMSE scores supports the hypothesis that nWBV is positively associated with cognitive performance. The hypothesis that this relationship is stronger in the dementia group, compared to the non-dementia group, was also supported. The present findings further indicate a significant main effect of dementia status on nWBV, which supports the hypothesis that AD dementia is linked to a decreased nWBV. Contrary to the hypothesis, the significant interaction between dementia status and age shows that the dementia-related nWBV-reduction is greater in the younger-old group, compared to the older group. Furthermore, although gender showed a significant main effect on nWBV, the non-significant interaction with dementia status suggests that gender does not differentially influence brain volume loss across groups.
+
+Previous studies evaluating the relationship between measures of total brain atrophy and cognitive functioning observed inconsistent results on the strength of this relationship. Some studies report strong relationships [@chen2017], while others argue that the relationship is more pronounced only in regional measures of atrophy [@knopman2021; @tahami2022]. This study adds evidence to the former set of studies. The positive moderate correlation between nWBV and MMSE scores is largely driven by dementia status. In contrast, the nearly absent correlation in the non-dementia group suggests that brain volume differences within healthy aging are not strongly associated with cognitive functioning. This pattern highlights that brain volume loss becomes a significant predictor of cognitive impairment primarily in the context of the AD dementia pathology. The lack of a significant impact of brain volume loss on cognitive performance in the non-dementia group might be explained by cognitive reserve or compensatory mechanisms (e.g., education, lifestyle) [@knopman2021; @nelson2021; @meng2012] that buffer the effect of natural brain volume differences on MMSE scores.
+
+Contrary to expectations, this study did not find a significant interaction effect of gender on the relationship between nWBV and dementia status. This contradicts a larger body of research that consistently report steeper brain volume loss in females with AD dementia [@mouton1998; @knopman2021]. These results might suggest that previously reported gender differences in AD progression (e.g., steeper volume loss in females) may not generalize to total nWBV, or that other factors (e.g., regional atrophy, hormonal influences) might explain those differences.
+
+Comparison of the findings with those of other studies contradict that the difference in nWBV between dementia and non-dementia groups is more pronounced in older adults than in younger-old adults [@mouton1998]. In these younger-old adults, the brain volume difference between dementia and non-dementia may be larger, whereas in older-old adults, dementia-related atrophy is harder to distinguish from normal aging induced atrophy. This suggests that aging masks the impact of dementia on brain atrophy.
+
+The findings of this study contribute to the ongoing debate regarding the relationship between brain atrophy and cognitive decline in Alzheimer’s disease. The results of this study support models that suggest a direct link between brain atropy and cognitive impairment in AD. However, the nearly absent correlation in the non-dementia group suggests that this relationship may emerge primarily in the context of AD pathology, aligning with theories emphasizing compensatory mechanisms such as cognitive reserve [@knopman2021; @nelson2021; @meng2012].
+
+## Limitations and Future Directions
+
+One limitation of the present study is the use of normalized whole brain volume as the primary measure of atrophy. Previous research has suggested that regional atrophy, particularly in areas such as the entorhinal cortex, hippocampus, and medial temporal lobe, may be a more sensitive marker of AD-related brain degeneration [@tahami2022; @knopman2021]. By focusing on normalized whole-brain volume, this study may have underestimated the strength or specificity of the relationships between brain atrophy and cognitive performance.
+
+Future studies employing region-specific analyses could provide a more nuanced understanding of how regional brain changes contribute to cognitive decline in AD. For example, MRI could be used to assess atrophy in hippocampal or entorhinal regions, which could show more pronounced relationships between atrophy and cognitive decline than those observed with global brain measures. These follow-up studies would build on the present findings by clarifying the neural underpinnings of cognitive decline in AD and potentially identifying region-specific biomarkers for clinical use.
+
+## Conclusion
+
+In summary, this study demonstrates that normalized whole-brain volume is positively associated with cognitive performance, with this relationship becoming pronounced in the presence of AD dementia. While age presented as a significant factor influencing the relationship between brain volume loss in dementia, gender did not significantly influence this relationship.
+
+{{< pagebreak >}}
+
+# References
+
+::: {#refs}
+:::
