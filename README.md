@@ -12,11 +12,11 @@ I wanted to use this assignment to familiarize myself with the Quarto extension 
 
 ## Project structure
 
-analysis/    – Quarto notebook + helper functions  
-manuscript/  – paper.qmd (pulls results inline)  
-data/        – anonymised CSV 
-outputs/     – rendered PDFs, figures  
-docs/        - interactive HTML file for analyses
++ `analysis/`    – Quarto notebook + helper functions  
++` manuscript/`  – paper.qmd (pulls results inline)  
++ `data/`        – anonymised CSV 
++ `output/`     – rendered PDFs, figures  
++ `docs/`        - interactive HTML file for analyses
 
 ## Quickstart
 
