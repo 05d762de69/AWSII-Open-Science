@@ -6,7 +6,7 @@ It contains:
 
 * the full Quarto analysis notebook (code + results)  
 * the manuscript source that pulls results inline  
-* raw/processed data and a reproducible R environment via **renv**
+* raw data and a reproducible R environment via **renv**
 
 >[!IMPORTANT]
 >Please view the analysis companion [here](https://05d762de69.github.io/AWSII-Open-Science/analysis.html).
