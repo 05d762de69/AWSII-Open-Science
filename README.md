@@ -35,5 +35,5 @@ quarto render("manuscript/paper.qmd")
 ```
 
 
-##Contact
+## Contact
 679693hs@eur.nl  - Issues welcome!
